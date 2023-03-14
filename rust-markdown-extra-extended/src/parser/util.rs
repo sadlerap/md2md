@@ -1,10 +1,4 @@
-use winnow::{
-    branch::alt,
-    bytes::none_of,
-    multi::many0,
-    sequence::delimited,
-    IResult, Parser,
-};
+use winnow::{branch::alt, bytes::none_of, multi::many0, sequence::delimited, IResult, Parser};
 
 pub fn nested_brackets(input: &str) -> IResult<&str, &str> {
     many0(alt((

@@ -1,8 +1,8 @@
 use regex::{Regex, RegexBuilder};
 
-mod parser;
+pub mod parser;
 
-/// Parses markdown according to the rules that https://github.com/egil/php-markdown-extra-extended
+/// Parses markdown according to the rules that <https://github.com/egil/php-markdown-extra-extended>
 /// uses for parsing
 pub struct MarkdownParser {
     bom_re: Regex,

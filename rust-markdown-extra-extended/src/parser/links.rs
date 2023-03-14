@@ -1,8 +1,11 @@
+use std::borrow::Cow;
+
 use winnow::{
     branch::alt,
-    bytes::take_until0,
+    bytes::{none_of, tag_no_case, take_until0, take_until1},
     character::{multispace0, newline, space0},
     combinator::opt,
+    multi::many1,
     sequence::delimited,
     IResult, Parser,
 };
@@ -20,6 +23,13 @@ pub struct Link<'a> {
     link_text: &'a str,
     link_ref: LinkRef<'a>,
     title: Option<&'a str>,
+}
+
+/// A link where the target is the same as the text.  In markdown, this is constructed with
+/// `<https://example.com>`
+#[derive(Debug, PartialEq, Eq)]
+pub struct AutoLink<'a> {
+    target: Cow<'a, str>,
 }
 
 fn ref_style(input: &str) -> IResult<&str, Link> {
@@ -62,6 +72,44 @@ fn inline_style(input: &str) -> IResult<&str, Link> {
         .parse_next(input)
 }
 
+pub fn parse_auto_link(input: &str) -> IResult<&str, AutoLink> {
+    let email = delimited(
+        "<",
+        (
+            opt(tag_no_case("mailto:")),
+            take_until1("@"),
+            "@",
+            take_until1(">"),
+        ),
+        ">",
+    )
+    .context("email autolink")
+    .map(|x| AutoLink {
+        target: Cow::Owned(format!("mailto:{}@{}", x.1, x.3)),
+    });
+    let normal = delimited(
+        "<",
+        (
+            alt((
+                tag_no_case("https"),
+                tag_no_case("http"),
+                tag_no_case("ftp"),
+                tag_no_case("dict"),
+            )),
+            ":",
+            many1(none_of("'\">\r\n\t\u{B}\u{C}")).map(|_: ()| {}),
+        )
+            .recognize(),
+        ">",
+    )
+    .context("normal autolink")
+    .map(|x| AutoLink {
+        target: Cow::Borrowed(x),
+    });
+
+    alt((email, normal)).parse_next(input)
+}
+
 pub fn parse_link(input: &str) -> IResult<&str, Link> {
     let (remaining, image) = alt((ref_style, inline_style)).parse_next(input)?;
     Ok((remaining, image))
@@ -73,7 +121,7 @@ mod test {
 
     #[test]
     fn parse_inline() {
-        let (remaining, link) = dbg!(parse_link("[foo](https://github.com/)\n")).unwrap();
+        let (remaining, link) = parse_link("[foo](https://github.com/)\n").unwrap();
         assert_eq!(remaining, "\n");
         assert_eq!(
             link,
@@ -87,7 +135,7 @@ mod test {
 
     #[test]
     fn parse_ref() {
-        let (remaining, link) = dbg!(parse_link("[foo][foo_link]\n")).unwrap();
+        let (remaining, link) = parse_link("[foo][foo_link]\n").unwrap();
         assert_eq!(remaining, "\n");
         assert_eq!(
             link,
@@ -97,5 +145,31 @@ mod test {
                 title: None
             }
         )
+    }
+
+    #[test]
+    fn auto_link() {
+        let (remaining, link) = parse_auto_link("<https://lib.rs>").unwrap();
+        assert_eq!(remaining, "");
+        assert_eq!(link.target, "https://lib.rs");
+    }
+
+    #[test]
+    fn auto_link_email() {
+        let (remaining, link) = parse_auto_link("<noreply@example.com>").unwrap();
+        assert_eq!(remaining, "");
+        assert_eq!(link.target, "mailto:noreply@example.com");
+    }
+
+    #[test]
+    fn auto_link_email_mailto() {
+        let (remaining, link) = parse_auto_link("<mailto:noreply@example.com>").unwrap();
+        assert_eq!(remaining, "");
+        assert_eq!(link.target, "mailto:noreply@example.com");
+    }
+
+    #[test]
+    fn not_auto_link() {
+        assert!(parse_auto_link("<noreply>").is_err())
     }
 }
