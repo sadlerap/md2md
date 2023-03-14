@@ -1,10 +1,15 @@
-[package]
-name = "md2md"
+[workspace]
+members = ["rust-markdown-extra-extended"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 authors = ["Andy Sadler"]
 license = "MIT OR Apache-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
+[package]
+name = "md2md"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
