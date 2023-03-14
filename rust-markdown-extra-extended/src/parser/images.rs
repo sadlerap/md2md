@@ -26,41 +26,36 @@ pub struct Image<'a> {
 
 pub fn parse_image(input: &'_ str) -> IResult<&str, Image<'_>> {
     let ref_style = (
-        tag("!["),
-        nested_brackets.recognize(),
-        tag("]"),
+        delimited(tag("!["), nested_brackets.recognize(), tag("]")),
         opt(tag(" ")),
         opt((newline, space0)),
-        tag("["),
-        take_until0("]"),
-        tag("]"),
+        delimited(tag("["), take_until0("]"), tag("]")),
     )
         .map(|x| Image {
-            alt_text: x.1,
-            image_ref: ImageRef::Ref(x.6),
+            alt_text: x.0,
+            image_ref: ImageRef::Ref(x.3),
             title: None,
         })
         .context("ref-style image");
 
     let inline_style = (
-        tag("!["),
-        nested_brackets.recognize(),
-        tag("]"),
+        delimited(tag("!["), nested_brackets.recognize(), tag("]")),
         opt(tag(" ")),
         tag("("),
         multispace0,
         nested_parenthesis,
         opt(multispace0),
         opt(alt((
-            (tag("\""), take_until0("\""), tag("\""), opt(multispace0)).map(|x| x.1),
-            (tag("\'"), take_until0("\'"), tag("\'"), opt(multispace0)).map(|x| x.1),
+            delimited(tag("\""), take_until0("\""), tag("\"")),
+            delimited(tag("\'"), take_until0("\'"), tag("\'")),
         ))),
+        opt(multispace0),
         tag(")"),
     )
         .map(|x| Image {
-            alt_text: x.1,
-            image_ref: ImageRef::Inline(x.6),
-            title: x.8,
+            alt_text: x.0,
+            image_ref: ImageRef::Inline(x.4),
+            title: x.6,
         })
         .context("inline image");
 
@@ -88,9 +83,17 @@ mod test {
     }
 
     #[test]
-    fn test2() {
-        let (remaining, read) = nested_brackets("foo[bar]]").unwrap();
-        assert_eq!(remaining, "]");
-        assert_eq!(read, "foo[bar]");
+    fn parse_ref() {
+        let (remaining, image) =
+            dbg!(parse_image("![foo][foo_image]\n")).unwrap();
+        assert_eq!(remaining, "\n");
+        assert_eq!(
+            image,
+            Image {
+                alt_text: "foo",
+                image_ref: ImageRef::Ref("foo_image"),
+                title: None
+            }
+        )
     }
 }
