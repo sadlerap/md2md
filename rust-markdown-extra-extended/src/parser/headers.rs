@@ -1,9 +1,9 @@
 use once_cell::sync::OnceCell;
-use pulldown_cmark::{CowStr, Event, HeadingLevel, Tag};
+use pulldown_cmark::HeadingLevel;
 use regex::{Regex, RegexBuilder};
 use winnow::{
     branch::alt,
-    bytes::{tag, take_until0},
+    bytes::take_until0,
     character::{newline, space0},
     multi::{many1, many_m_n},
     Parser,
@@ -17,8 +17,7 @@ pub struct Header<'a> {
     text: &'a str,
 }
 
-pub fn parse_header(input: &'_ str) -> winnow::IResult<&str, Header>
-{
+pub fn parse_header(input: &'_ str) -> winnow::IResult<&str, Header> {
     let atx_re = PARSE_ATX_STYLE
         .get_or_try_init(|| {
             RegexBuilder::new(r"(?P<heading>.+)[ ]*\#*\n?")
@@ -31,16 +30,19 @@ pub fn parse_header(input: &'_ str) -> winnow::IResult<&str, Header>
         take_until0("\n"),
         newline.void(),
         alt((
-            many1(tag("=")).map(|_: ()| HeadingLevel::H1),
-            many1(tag("-")).map(|_: ()| HeadingLevel::H2),
+            many1("=").map(|_: ()| HeadingLevel::H1),
+            many1("-").map(|_: ()| HeadingLevel::H2),
         )),
         space0.void(),
     )
-        .map(|x: (&str, _, HeadingLevel, _)| Header { level: x.2, text: x.0 })
+        .map(|x: (&str, _, HeadingLevel, _)| Header {
+            level: x.2,
+            text: x.0,
+        })
         .context("setext-style header");
 
     let atx_style = (
-        many_m_n(1, 6, tag("#")).map(|depth: usize| {
+        many_m_n(1, 6, "#").map(|depth: usize| {
             match depth {
                 1 => HeadingLevel::H1,
                 2 => HeadingLevel::H2,
@@ -61,7 +63,10 @@ pub fn parse_header(input: &'_ str) -> winnow::IResult<&str, Header>
             Ok(heading.as_str())
         }),
     )
-        .map(|x: (HeadingLevel, _, &str)| Header { level: x.0, text: x.2 })
+        .map(|x: (HeadingLevel, _, &str)| Header {
+            level: x.0,
+            text: x.2,
+        })
         .context("atx-style header");
 
     let (output, heading) = alt((setext_style, atx_style)).parse_next(input)?;
@@ -97,37 +102,5 @@ mod tests {
                 text: "Hello, World!",
             }
         );
-    }
-
-    #[test]
-    fn what_does_pulldown_cmark_do_atx() {
-        use pulldown_cmark::Parser;
-
-        let parser = Parser::new("# Hello, World!");
-        let res: Vec<_> = parser.into_iter().collect();
-        assert_eq!(
-            &res,
-            &[
-                Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
-                Event::Text(CowStr::Borrowed("Hello, World!")),
-                Event::End(Tag::Heading(HeadingLevel::H1, None, vec![]))
-            ]
-        )
-    }
-
-    #[test]
-    fn what_does_pulldown_cmark_do_setext() {
-        use pulldown_cmark::Parser;
-
-        let parser = Parser::new("Hello, World!\n============");
-        let res: Vec<_> = parser.into_iter().collect();
-        assert_eq!(
-            &res,
-            &[
-                Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
-                Event::Text(CowStr::Borrowed("Hello, World!")),
-                Event::End(Tag::Heading(HeadingLevel::H1, None, vec![]))
-            ]
-        )
     }
 }

@@ -1,10 +1,8 @@
-use pulldown_cmark::Event;
 use winnow::{
     branch::alt,
-    bytes::{none_of, tag, take_until0},
+    bytes::take_until0,
     character::{multispace0, newline, space0},
     combinator::opt,
-    multi::many0,
     sequence::delimited,
     IResult, Parser,
 };
@@ -26,10 +24,10 @@ pub struct Image<'a> {
 
 fn ref_style(input: &str) -> IResult<&str, Image> {
     (
-        delimited(tag("!["), nested_brackets.recognize(), tag("]")),
-        opt(tag(" ")),
+        delimited("![", nested_brackets.recognize(), "]"),
+        opt(" "),
         opt((newline, space0)),
-        delimited(tag("["), take_until0("]"), tag("]")),
+        delimited("[", take_until0("]"), "]"),
     )
         .map(|x| Image {
             alt_text: x.0,
@@ -42,17 +40,17 @@ fn ref_style(input: &str) -> IResult<&str, Image> {
 
 fn inline_style(input: &str) -> IResult<&str, Image> {
     (
-        delimited(tag("!["), nested_brackets.recognize(), tag("]")),
-        opt(tag(" ")),
-        tag("("),
+        delimited("![", nested_brackets.recognize(), "]"),
+        opt(" "),
+        "(",
         multispace0,
         nested_parenthesis,
         multispace0,
         opt(alt((
-            delimited(tag("\""), take_until0("\""), (tag("\""), multispace0)),
-            delimited(tag("\'"), take_until0("\'"), (tag("\'"), multispace0)),
+            delimited("\"", take_until0("\""), ("\"", multispace0)),
+            delimited("\'", take_until0("\'"), ("\'", multispace0)),
         ))),
-        tag(")"),
+        ")",
     )
         .map(|x| Image {
             alt_text: x.0,

@@ -1,6 +1,6 @@
 use winnow::{
     branch::alt,
-    bytes::{tag, take_until0},
+    bytes::take_until0,
     character::{multispace0, newline, space0},
     combinator::opt,
     sequence::delimited,
@@ -24,10 +24,10 @@ pub struct Link<'a> {
 
 fn ref_style(input: &str) -> IResult<&str, Link> {
     (
-        delimited(tag("["), nested_brackets.recognize(), tag("]")),
-        opt(tag(" ")),
+        delimited("[", nested_brackets.recognize(), "]"),
+        opt(" "),
         opt((newline, space0)),
-        delimited(tag("["), take_until0("]"), tag("]")),
+        delimited("[", take_until0("]"), "]"),
     )
         .map(|x| Link {
             link_text: x.0,
@@ -40,18 +40,18 @@ fn ref_style(input: &str) -> IResult<&str, Link> {
 
 fn inline_style(input: &str) -> IResult<&str, Link> {
     (
-        delimited(tag("["), nested_brackets.recognize(), tag("]")),
-        opt(tag(" ")),
-        tag("("),
+        delimited("[", nested_brackets.recognize(), "]"),
+        opt(" "),
+        "(",
         multispace0,
         nested_parenthesis,
         opt(multispace0),
         opt(alt((
-            delimited(tag("\""), take_until0("\""), tag("\"")),
-            delimited(tag("\'"), take_until0("\'"), tag("\'")),
+            delimited("\"", take_until0("\""), "\""),
+            delimited("\'", take_until0("\'"), "\'"),
         ))),
         opt(multispace0),
-        tag(")"),
+        ")",
     )
         .map(|x| Link {
             link_text: x.0,
