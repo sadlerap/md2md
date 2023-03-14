@@ -24,8 +24,8 @@ pub struct Image<'a> {
     title: Option<&'a str>,
 }
 
-pub fn parse_image(input: &'_ str) -> IResult<&str, Image<'_>> {
-    let ref_style = (
+fn ref_style(input: &str) -> IResult<&str, Image> {
+    (
         delimited(tag("!["), nested_brackets.recognize(), tag("]")),
         opt(tag(" ")),
         opt((newline, space0)),
@@ -36,20 +36,22 @@ pub fn parse_image(input: &'_ str) -> IResult<&str, Image<'_>> {
             image_ref: ImageRef::Ref(x.3),
             title: None,
         })
-        .context("ref-style image");
+        .context("ref-style image")
+        .parse_next(input)
+}
 
-    let inline_style = (
+fn inline_style(input: &str) -> IResult<&str, Image> {
+    (
         delimited(tag("!["), nested_brackets.recognize(), tag("]")),
         opt(tag(" ")),
         tag("("),
         multispace0,
         nested_parenthesis,
-        opt(multispace0),
+        multispace0,
         opt(alt((
-            delimited(tag("\""), take_until0("\""), tag("\"")),
-            delimited(tag("\'"), take_until0("\'"), tag("\'")),
+            delimited(tag("\""), take_until0("\""), (tag("\""), multispace0)),
+            delimited(tag("\'"), take_until0("\'"), (tag("\'"), multispace0)),
         ))),
-        opt(multispace0),
         tag(")"),
     )
         .map(|x| Image {
@@ -57,8 +59,11 @@ pub fn parse_image(input: &'_ str) -> IResult<&str, Image<'_>> {
             image_ref: ImageRef::Inline(x.4),
             title: x.6,
         })
-        .context("inline image");
+        .context("inline image")
+        .parse_next(input)
+}
 
+pub fn parse_image(input: &str) -> IResult<&str, Image> {
     let (remaining, image) = alt((ref_style, inline_style)).parse_next(input)?;
     Ok((remaining, image))
 }
@@ -84,8 +89,7 @@ mod test {
 
     #[test]
     fn parse_ref() {
-        let (remaining, image) =
-            dbg!(parse_image("![foo][foo_image]\n")).unwrap();
+        let (remaining, image) = dbg!(parse_image("![foo][foo_image]\n")).unwrap();
         assert_eq!(remaining, "\n");
         assert_eq!(
             image,
