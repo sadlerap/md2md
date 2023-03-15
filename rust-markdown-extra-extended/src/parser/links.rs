@@ -7,10 +7,13 @@ use winnow::{
     combinator::opt,
     multi::many1,
     sequence::delimited,
+    stream::Accumulate,
     IResult, Parser,
 };
 
 use crate::parser::util::{nested_brackets, nested_parenthesis};
+
+use super::util::MarkdownText;
 
 #[derive(Debug, PartialEq, Eq)]
 enum LinkRef<'a> {
@@ -19,10 +22,10 @@ enum LinkRef<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Link<'a> {
-    link_text: &'a str,
-    link_ref: LinkRef<'a>,
-    title: Option<&'a str>,
+pub struct Link<'source> {
+    link_text: Vec<MarkdownText<'source>>,
+    link_ref: LinkRef<'source>,
+    title: Option<&'source str>,
 }
 
 /// A link where the target is the same as the text.  In markdown, this is constructed with
@@ -32,9 +35,23 @@ pub struct AutoLink<'a> {
     target: Cow<'a, str>,
 }
 
+fn parse_brackets<'source, A>(input: &'source str) -> IResult<&'source str, A>
+where
+    A: Accumulate<MarkdownText<'source>>,
+{
+    delimited(
+        "[",
+        nested_brackets
+            .recognize()
+            .and_then(MarkdownText::parse_markdown_text_stream),
+        "]",
+    )
+    .parse_next(input)
+}
+
 fn ref_style(input: &str) -> IResult<&str, Link> {
     (
-        delimited("[", nested_brackets.recognize(), "]"),
+        parse_brackets,
         opt(" "),
         opt((newline, space0)),
         delimited("[", take_until0("]"), "]"),
@@ -44,31 +61,36 @@ fn ref_style(input: &str) -> IResult<&str, Link> {
             link_ref: LinkRef::Ref(x.3),
             title: None,
         })
-        .context("ref-style image")
+        .context("ref-style link")
         .parse_next(input)
 }
 
 fn inline_style(input: &str) -> IResult<&str, Link> {
     (
-        delimited("[", nested_brackets.recognize(), "]"),
+        parse_brackets,
         opt(" "),
-        "(",
-        multispace0,
-        nested_parenthesis,
-        opt(multispace0),
-        opt(alt((
-            delimited("\"", take_until0("\""), "\""),
-            delimited("\'", take_until0("\'"), "\'"),
-        ))),
-        opt(multispace0),
-        ")",
+        delimited(
+            "(",
+            (
+                multispace0,
+                nested_parenthesis,
+                opt(multispace0),
+                opt(alt((
+                    delimited("\"", take_until0("\""), "\""),
+                    delimited("\'", take_until0("\'"), "\'"),
+                ))),
+                opt(multispace0),
+            )
+                .map(|x| (x.1, x.3)),
+            ")",
+        ),
     )
         .map(|x| Link {
             link_text: x.0,
-            link_ref: LinkRef::Inline(x.4),
-            title: x.6,
+            link_ref: LinkRef::Inline(x.2 .0),
+            title: x.2 .1,
         })
-        .context("inline image")
+        .context("inline link")
         .parse_next(input)
 }
 
@@ -111,12 +133,13 @@ pub fn parse_auto_link(input: &str) -> IResult<&str, AutoLink> {
 }
 
 pub fn parse_link(input: &str) -> IResult<&str, Link> {
-    let (remaining, image) = alt((ref_style, inline_style)).parse_next(input)?;
-    Ok((remaining, image))
+    alt((ref_style, inline_style)).parse_next(input)
 }
 
 #[cfg(test)]
 mod test {
+    use winnow::FinishIResult;
+
     use super::*;
 
     #[test]
@@ -126,7 +149,7 @@ mod test {
         assert_eq!(
             link,
             Link {
-                link_text: "foo",
+                link_text: vec![MarkdownText::Text("foo")],
                 link_ref: LinkRef::Inline("https://github.com/"),
                 title: None
             }
@@ -140,9 +163,27 @@ mod test {
         assert_eq!(
             link,
             Link {
-                link_text: "foo",
+                link_text: vec![MarkdownText::Text("foo")],
                 link_ref: LinkRef::Ref("foo_link"),
                 title: None
+            }
+        )
+    }
+
+    #[test]
+    fn parse_with_brackets() {
+        let link = parse_link("[foo [bar]](https://lib.rs)").finish().unwrap();
+        assert_eq!(
+            link,
+            Link {
+                link_text: vec![
+                    MarkdownText::Text("foo "),
+                    MarkdownText::Text("["),
+                    MarkdownText::Text("bar"),
+                    MarkdownText::Text("]"),
+                ],
+                link_ref: LinkRef::Inline("https://lib.rs"),
+                title: None,
             }
         )
     }
@@ -171,5 +212,16 @@ mod test {
     #[test]
     fn not_auto_link() {
         assert!(parse_auto_link("<noreply>").is_err())
+    }
+
+    #[test]
+    #[ignore]
+    fn what_does_this_button_do() {
+        let text = "foo [bar]";
+        let events = pulldown_cmark::Parser::new(text).into_iter().collect::<Vec<_>>();
+        let mut s = String::new();
+        pulldown_cmark::html::push_html(&mut s, dbg!(events).into_iter());
+        dbg!(s);
+        assert!(false);
     }
 }
