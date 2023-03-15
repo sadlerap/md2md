@@ -1,17 +1,19 @@
 use winnow::{
     bytes::take_till1,
     character::newline,
-    combinator::opt,
-    multi::{many1, many0},
-    sequence::preceded,
-    stream::Accumulate,
-    IResult, Parser,
+    multi::{many1, separated1},
+    IResult, Parser, combinator::opt, sequence::terminated,
 };
 
 use super::util::MarkdownText;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Paragraph<'source> {
+    pub(crate) lines: Vec<Line<'source>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Line<'source> {
     pub(crate) content: Vec<MarkdownText<'source>>,
 }
 
@@ -21,13 +23,11 @@ pub struct Paragraph<'source> {
 /// * Paragraphs
 /// * Headings (more specifically, setext-style headings)
 /// * Quote blocks
-pub fn parse_line<'source, A>(input: &'source str) -> IResult<&'source str, A>
-where
-    A: Accumulate<MarkdownText<'source>>,
-{
+pub fn parse_line(input: &str) -> IResult<&str, Line> {
     take_till1("\n")
         .and_then(many1(MarkdownText::parse_markdown_text))
         .context("line of text")
+        .map(|content| Line { content })
         .parse_next(input)
 }
 
@@ -37,21 +37,8 @@ where
 /// there isn't any special characters to delineate this block type from others, so blocks should
 /// default to this.
 pub fn parse_paragraph(input: &str) -> IResult<&str, Paragraph> {
-    ((
-        parse_line,
-        many0(preceded(newline, parse_line)),
-        opt(newline)))
+    terminated(separated1(parse_line, newline), opt(newline))
         .context("paragraph")
-        .map(
-            |x: (
-                Vec<MarkdownText<'_>>,
-                Vec<Vec<MarkdownText<'_>>>,
-                Option<char>,
-            )| {
-                let mut content = x.0;
-                content.extend(x.1.into_iter().flatten());
-                Paragraph { content }
-            },
-        )
+        .map(|lines: Vec<Line<'_>>| Paragraph { lines })
         .parse_next(input)
 }

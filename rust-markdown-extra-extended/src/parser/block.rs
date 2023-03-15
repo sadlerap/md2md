@@ -25,7 +25,7 @@ pub fn parse_block(input: &str) -> IResult<&str, Block> {
 mod test {
     use winnow::FinishIResult;
 
-    use crate::parser::util::MarkdownText;
+    use crate::parser::{paragraphs::Line, util::MarkdownText};
 
     use super::*;
 
@@ -36,7 +36,9 @@ mod test {
         assert_eq!(
             block,
             Block::Paragraph(Paragraph {
-                content: vec![MarkdownText::Text("just a paragraph")]
+                lines: vec![Line {
+                    content: vec![MarkdownText::Text("just a paragraph")]
+                }]
             })
         )
     }
@@ -48,7 +50,9 @@ mod test {
         assert_eq!(
             block,
             Block::Paragraph(Paragraph {
-                content: vec![MarkdownText::Text("just a paragraph")]
+                lines: vec![Line {
+                    content: vec![MarkdownText::Text("just a paragraph")]
+                }]
             })
         )
     }
