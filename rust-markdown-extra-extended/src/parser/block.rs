@@ -25,7 +25,7 @@ pub fn parse_block(input: &str) -> IResult<&str, Block> {
 mod test {
     use winnow::FinishIResult;
 
-    use crate::parser::{paragraphs::Line, util::MarkdownText};
+    use crate::parser::util::MarkdownText::{self, *};
 
     use super::*;
 
@@ -36,9 +36,7 @@ mod test {
         assert_eq!(
             block,
             Block::Paragraph(Paragraph {
-                lines: vec![Line {
-                    content: vec![MarkdownText::Text("just a paragraph")]
-                }]
+                text: vec![Text("just a paragraph")]
             })
         )
     }
@@ -50,9 +48,20 @@ mod test {
         assert_eq!(
             block,
             Block::Paragraph(Paragraph {
-                lines: vec![Line {
-                    content: vec![MarkdownText::Text("just a paragraph")]
-                }]
+                text: vec![Text("just a paragraph"), SoftBreak]
+            })
+        )
+    }
+
+    #[test]
+    fn parse_header() {
+        let input = "# header";
+        let block = parse_block(input).finish().unwrap();
+        assert_eq!(
+            block,
+            Block::Heading(Header {
+                level: pulldown_cmark::HeadingLevel::H1,
+                text: vec![MarkdownText::Text("header")],
             })
         )
     }

@@ -1,73 +1,99 @@
-use once_cell::sync::OnceCell;
 use pulldown_cmark::HeadingLevel;
-use regex::{Regex, RegexBuilder};
 use winnow::{
     branch::alt,
-    bytes::take_until0,
+    bytes::{take_till1, take_until1, take_while1},
     character::{newline, space0},
-    multi::{many1, many_m_n},
-    Parser,
+    combinator::{fail, opt},
+    dispatch,
+    multi::many1,
+    sequence::{delimited, preceded, terminated},
+    IResult, Parser,
 };
 
-static PARSE_ATX_STYLE: OnceCell<Regex> = OnceCell::new();
+use super::util::MarkdownText;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Header<'a> {
-    level: HeadingLevel,
-    text: &'a str,
+pub struct Header<'source> {
+    pub(crate) level: HeadingLevel,
+    pub(crate) text: Vec<MarkdownText<'source>>,
 }
 
-pub fn parse_header(input: &'_ str) -> winnow::IResult<&str, Header> {
-    let atx_re = PARSE_ATX_STYLE
-        .get_or_try_init(|| {
-            RegexBuilder::new(r"(?P<heading>.+)[ ]*\#*\n?")
-                .multi_line(true)
-                .build()
-        })
-        .unwrap();
-
-    let setext_style = (
-        take_until0("\n"),
-        newline.void(),
+fn setext_level_from_ending(input: &str) -> IResult<&str, HeadingLevel> {
+    delimited(
+        space0,
         alt((
             many1("=").map(|_: ()| HeadingLevel::H1),
             many1("-").map(|_: ()| HeadingLevel::H2),
         )),
-        space0.void(),
-    )
-        .map(|x: (&str, _, HeadingLevel, _)| Header {
-            level: x.2,
-            text: x.0,
-        })
-        .context("setext-style header");
-
-    let atx_style = (
-        many_m_n(1, 6, "#").map(|depth: usize| {
-            match depth {
-                1 => HeadingLevel::H1,
-                2 => HeadingLevel::H2,
-                3 => HeadingLevel::H3,
-                4 => HeadingLevel::H4,
-                5 => HeadingLevel::H5,
-                6 => HeadingLevel::H6,
-                _ => unreachable!(), // safe because we only took at most 6 '#'s
-            }
-        }),
         space0,
-        take_until0("\n").map_res(|s: &str| -> Result<&str, &str> {
-            let Some(captures) = atx_re.captures(dbg!(s)) else {
-                panic!("failed to find matches in ATX regex!");
-            };
-
-            let Some(heading) = captures.name("heading") else { panic!("heading not found!"); };
-            Ok(heading.as_str())
-        }),
     )
-        .map(|x: (HeadingLevel, _, &str)| Header {
-            level: x.0,
-            text: x.2,
-        })
-        .context("atx-style header");
+    .context("setext level")
+    .parse_next(input)
+}
+
+fn setext_ending(input: &str) -> IResult<&str, HeadingLevel> {
+    preceded((newline, space0), setext_level_from_ending)
+        .context("setext ending")
+        .parse_next(input)
+}
+
+fn setext_style(input: &str) -> IResult<&str, Header> {
+    let Some(line) = dbg!(input.lines()
+        .filter(|&line| dbg!(setext_level_from_ending.parse_next(dbg!(line)).is_ok()))
+        .next()) else {
+        return fail(input);
+    };
+
+    let line = format!("\n{line}");
+
+    let x = (
+        take_until1(dbg!(line.as_str())).and_then(MarkdownText::parse_markdown_text_stream),
+        setext_ending,
+    )
+        .map(|(text, level)| Header { text, level })
+        .parse_next(input);
+
+    x
+}
+
+pub fn parse_header(input: &'_ str) -> IResult<&str, Header> {
+    let find_until_opt_terminator = |ending: &'static str| {
+        take_till1("\n")
+            .and_then(terminated(
+                MarkdownText::parse_markdown_text_stream,
+                (space0, opt(ending), space0),
+            ))
+            .context(format!("find until opt terminator"))
+    };
+
+    let atx_style = dispatch! {delimited(space0, take_while1("#"), space0);
+        "######" => find_until_opt_terminator("######").map(|text| Header {
+            text,
+            level: HeadingLevel::H6,
+        }),
+        "#####" => find_until_opt_terminator("#####").map(|text| Header {
+            text,
+            level: HeadingLevel::H5,
+        }),
+        "####" => find_until_opt_terminator("####").map(|text| Header {
+            text,
+            level: HeadingLevel::H4,
+        }),
+        "###" => find_until_opt_terminator("###").map(|text| Header {
+            text,
+            level: HeadingLevel::H3,
+        }),
+        "##" => find_until_opt_terminator("##").map(|text| Header {
+            text,
+            level: HeadingLevel::H2,
+        }),
+        "#" => find_until_opt_terminator("#").map(|text| Header {
+            text,
+            level: HeadingLevel::H1,
+        }),
+        _ => fail
+    }
+    .context("atx-style header");
 
     let (output, heading) = alt((setext_style, atx_style)).parse_next(input)?;
 
@@ -86,20 +112,33 @@ mod tests {
             heading,
             Header {
                 level: HeadingLevel::H1,
-                text: "Hello, World!",
+                text: vec![MarkdownText::Text("Hello, World"), MarkdownText::Text("!")],
             }
         );
     }
 
     #[test]
-    fn test_setext_header() {
+    fn test_setext_header_h1() {
         let (remaining, header) = parse_header("Hello, World!\n============\n").unwrap();
         assert_eq!(remaining, "\n");
         assert_eq!(
             header,
             Header {
                 level: HeadingLevel::H1,
-                text: "Hello, World!",
+                text: vec![MarkdownText::Text("Hello, World"), MarkdownText::Text("!")]
+            }
+        );
+    }
+
+    #[test]
+    fn test_setext_header_h2() {
+        let (remaining, header) = parse_header("Hello, World!\n------------").unwrap();
+        assert_eq!(remaining, "");
+        assert_eq!(
+            header,
+            Header {
+                level: HeadingLevel::H2,
+                text: vec![MarkdownText::Text("Hello, World"), MarkdownText::Text("!")]
             }
         );
     }

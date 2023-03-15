@@ -1,7 +1,7 @@
 use winnow::{
     branch::alt,
-    bytes::{any, none_of, take, take_till0, take_till1},
-    character::newline,
+    bytes::{any, none_of, take, take_till0, take_till1, take_while1},
+    character::{multispace1, newline},
     combinator::{opt, peek},
     dispatch,
     multi::{many0, many1},
@@ -22,6 +22,7 @@ pub enum MarkdownText<'source> {
     Image(Image<'source>),
     Link(Link<'source>),
     AutoLink(AutoLink<'source>),
+    SoftBreak,
 }
 
 impl<'source> MarkdownText<'source> {
@@ -53,20 +54,20 @@ impl<'source> MarkdownText<'source> {
     }
 
     pub fn parse_markdown_text(input: &'source str) -> IResult<&'source str, Self> {
-        let parser = dispatch! {peek(any);
-            '!' => alt((
+        let parser = dispatch! {peek(alt((take_while1("![<\n"), take(1usize))));
+            "![" => alt((
                 parse_image.context("image").map(|i| MarkdownText::Image(i)),
                 MarkdownText::take1,
             )),
-            '[' => alt((
+            "[" => alt((
                 parse_link.context("link").map(|l| MarkdownText::Link(l)),
                 MarkdownText::take1,
             )),
-            '<' => alt((
+            "<" => alt((
                 parse_auto_link.context("auto link").map(|a| MarkdownText::AutoLink(a)),
                 MarkdownText::take1,
             )),
-            ' ' => Self::parse_markdown_text,
+            "\n" => multispace1.map(|_| MarkdownText::SoftBreak).context("soft break"),
             _ => alt((
                 take_till1("\n[]<>!").map(|t| MarkdownText::Text(t)),
                 terminated(
