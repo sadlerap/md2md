@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use winnow::{
     branch::alt,
     bytes::{any, none_of, take, take_till0, take_till1, take_while1},
@@ -11,6 +13,7 @@ use winnow::{
 };
 
 use super::{
+    code::parse_inline_code,
     images::{parse_image, Image},
     links::{parse_auto_link, parse_link, AutoLink, Link},
 };
@@ -23,6 +26,7 @@ pub enum MarkdownText<'source> {
     Link(Link<'source>),
     AutoLink(AutoLink<'source>),
     SoftBreak,
+    Code{code: Cow<'source, str>},
 }
 
 impl<'source> MarkdownText<'source> {
@@ -54,13 +58,17 @@ impl<'source> MarkdownText<'source> {
     }
 
     pub fn parse_markdown_text(input: &'source str) -> IResult<&'source str, Self> {
-        let parser = dispatch! {peek(alt((take_while1("![<\n"), take(1usize))));
+        let parser = dispatch! {peek(alt((take_while1("![<`\n"), take(1usize))));
             "![" => alt((
                 parse_image.context("image").map(|i| MarkdownText::Image(i)),
                 MarkdownText::take1,
             )),
             "[" => alt((
                 parse_link.context("link").map(|l| MarkdownText::Link(l)),
+                MarkdownText::take1,
+            )),
+            "`" => alt((
+                parse_inline_code.context("code"),
                 MarkdownText::take1,
             )),
             "<" => alt((

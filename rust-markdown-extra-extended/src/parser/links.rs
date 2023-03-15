@@ -213,17 +213,4 @@ mod test {
     fn not_auto_link() {
         assert!(parse_auto_link("<noreply>").is_err())
     }
-
-    #[test]
-    #[ignore]
-    fn what_does_this_button_do() {
-        let text = "hello, world!\n============";
-        let events = pulldown_cmark::Parser::new(text)
-            .into_iter()
-            .collect::<Vec<_>>();
-        let mut s = String::new();
-        pulldown_cmark::html::push_html(&mut s, dbg!(events).into_iter());
-        dbg!(s);
-        assert!(false);
-    }
 }
