@@ -3,11 +3,23 @@ use winnow::{
     Parser,
 };
 
+use crate::AsText;
+
 use super::util::MarkdownText;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Paragraph<'source> {
     pub(crate) text: Vec<MarkdownText<'source>>,
+}
+
+impl<'source> AsText for Paragraph<'source> {
+    fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        for t in self.text.iter() {
+            t.write_as_text(output)?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Parse a paragraph.

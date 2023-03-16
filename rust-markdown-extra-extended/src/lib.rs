@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, io};
 
 use once_cell::sync::OnceCell;
 use regex::{Regex, RegexBuilder};
@@ -6,7 +6,11 @@ use winnow::{multi::many1, FinishIResult, Parser};
 
 pub mod parser;
 
-fn cleanup(data: &'_ str, tab_width: usize) -> Cow<'_, str> {
+pub trait AsText {
+    fn write_as_text<Writer: io::Write>(&self, output: &mut Writer) -> io::Result<()>;
+}
+
+pub fn cleanup(data: &'_ str, tab_width: usize) -> Cow<'_, str> {
     static BOM_RE: OnceCell<Regex> = OnceCell::new();
     static LINE_ENDING_RE: OnceCell<Regex> = OnceCell::new();
     static DETAB_RE: OnceCell<Regex> = OnceCell::new();
@@ -71,12 +75,22 @@ pub struct Markdown<'source> {
 }
 
 impl<'source> Markdown<'source> {
-    fn parse(input: &'source str) -> Result<Self, String> {
+    pub fn parse(input: &'source str) -> Result<Self, String> {
         many1(parser::block::parse_block)
             .context("markdown text")
             .map(|blocks| Markdown { blocks })
             .parse_next(input)
             .finish()
             .map_err(|e| format!("parsing error: {:?}", e))
+    }
+}
+
+impl<'source> AsText for Markdown<'source> {
+    fn write_as_text<Writer: io::Write>(&self, output: &mut Writer) -> io::Result<()> {
+        for b in self.blocks.iter() {
+            b.write_as_text(output)?;
+        }
+
+        Ok(())
     }
 }

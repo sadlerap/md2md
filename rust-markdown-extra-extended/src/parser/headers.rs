@@ -10,12 +10,44 @@ use winnow::{
     IResult, Parser,
 };
 
+use crate::AsText;
+
 use super::util::MarkdownText;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Header<'source> {
     pub(crate) level: HeadingLevel,
     pub(crate) text: Vec<MarkdownText<'source>>,
+}
+
+impl<'source> AsText for Header<'source> {
+    fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self.level {
+            HeadingLevel::H1 => {
+                for t in self.text.iter() {
+                    t.write_as_text(output)?;
+                }
+                writeln!(output, "=====")?;
+                return Ok(());
+            },
+            HeadingLevel::H2 => {
+                for t in self.text.iter() {
+                    t.write_as_text(output)?;
+                }
+                writeln!(output, "-----")?;
+                return Ok(());
+            },
+            HeadingLevel::H3 => write!(output, "### ")?,
+            HeadingLevel::H4 => write!(output, "#### ")?,
+            HeadingLevel::H5 => write!(output, "##### ")?,
+            HeadingLevel::H6 => write!(output, "###### ")?,
+        };
+        for t in self.text.iter() {
+            t.write_as_text(output)?;
+        }
+
+        Ok(())
+    }
 }
 
 fn setext_level_from_ending(input: &str) -> IResult<&str, HeadingLevel> {

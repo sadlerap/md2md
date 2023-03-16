@@ -7,7 +7,7 @@ use winnow::{
     IResult, Parser,
 };
 
-use crate::parser::util::{nested_brackets, nested_parenthesis};
+use crate::{parser::util::{nested_brackets, nested_parenthesis}, AsText};
 
 #[derive(Debug, PartialEq, Eq)]
 enum ImageRef<'a> {
@@ -20,6 +20,16 @@ pub struct Image<'a> {
     alt_text: &'a str,
     image_ref: ImageRef<'a>,
     title: Option<&'a str>,
+}
+
+impl<'a> AsText for Image<'a> {
+    fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self.image_ref {
+            ImageRef::Ref(r) => write!(output, "![{}][{}]", self.alt_text, r)?,
+            ImageRef::Inline(i) => write!(output, "![{}]({})", self.alt_text, i)?,
+        }
+        Ok(())
+    }
 }
 
 fn ref_style(input: &str) -> IResult<&str, Image> {

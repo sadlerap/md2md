@@ -1,5 +1,7 @@
 use winnow::{branch::alt, character::newline, multi::many1, sequence::preceded, IResult, Parser};
 
+use crate::AsText;
+
 use super::{
     headers::{parse_header, Header},
     paragraphs::{parse_paragraph, Paragraph},
@@ -20,6 +22,15 @@ pub fn parse_block(input: &str) -> IResult<&str, Block> {
     ))
     .context("block")
     .parse_next(input)
+}
+
+impl<'source> AsText for Block<'source> {
+    fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self {
+            Block::Paragraph(p) => p.write_as_text(output),
+            Block::Heading(h) => h.write_as_text(output),
+        }
+    }
 }
 
 #[cfg(test)]

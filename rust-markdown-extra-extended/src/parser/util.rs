@@ -12,6 +12,8 @@ use winnow::{
     IResult, Parser,
 };
 
+use crate::AsText;
+
 use super::{
     code::parse_inline_code,
     images::{parse_image, Image},
@@ -27,6 +29,20 @@ pub enum MarkdownText<'source> {
     AutoLink(AutoLink<'source>),
     SoftBreak,
     Code{code: Cow<'source, str>},
+}
+
+impl<'source> AsText for MarkdownText<'source> {
+    fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self {
+            MarkdownText::Text(t) => write!(output, "{t}")?,
+            MarkdownText::Image(image) => image.write_as_text(output)?,
+            MarkdownText::Link(link) => link.write_as_text(output)?,
+            MarkdownText::AutoLink(link) => link.write_as_text(output)?,
+            MarkdownText::SoftBreak => write!(output, "\n")?,
+            MarkdownText::Code { code } => write!(output, "`{code}`")?,
+        }
+        Ok(())
+    }
 }
 
 impl<'source> MarkdownText<'source> {

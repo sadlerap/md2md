@@ -11,7 +11,7 @@ use winnow::{
     IResult, Parser,
 };
 
-use crate::parser::util::{nested_brackets, nested_parenthesis};
+use crate::{parser::util::{nested_brackets, nested_parenthesis}, AsText};
 
 use super::util::MarkdownText;
 
@@ -28,11 +28,39 @@ pub struct Link<'source> {
     title: Option<&'source str>,
 }
 
+impl<'source> AsText for Link<'source> {
+    fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        write!(output, "[")?;
+        for t in self.link_text.iter() {
+            t.write_as_text(output)?;
+        }
+        write!(output, "]")?;
+        match self.link_ref {
+            LinkRef::Ref(r) => write!(output, "[{r}]")?,
+            LinkRef::Inline(i) => {
+                write!(output, "({i}")?;
+                if let Some(title) = self.title {
+                    write!(output, " \"{title}\"")?;
+                }
+                write!(output, ")")?;
+            },
+        }
+        Ok(())
+    }
+}
+
 /// A link where the target is the same as the text.  In markdown, this is constructed with
 /// `<https://example.com>`
 #[derive(Debug, PartialEq, Eq)]
 pub struct AutoLink<'a> {
     target: Cow<'a, str>,
+}
+
+impl<'a> AsText for AutoLink<'a> {
+    fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        write!(output, "<{}>", self.target)?;
+        Ok(())
+    }
 }
 
 fn parse_brackets<'source, A>(input: &'source str) -> IResult<&'source str, A>
