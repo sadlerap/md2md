@@ -1,4 +1,3 @@
-use pulldown_cmark::HeadingLevel;
 use winnow::{
     branch::alt,
     bytes::{take_till1, take_until1, take_while1},
@@ -15,38 +14,59 @@ use crate::AsText;
 use super::util::MarkdownText;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Header<'source> {
-    pub(crate) level: HeadingLevel,
-    pub(crate) text: Vec<MarkdownText<'source>>,
+pub enum HeadingLevel {
+    H1,
+    H2,
+    H3,
+    H4,
+    H5,
+    H6,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Header<'source> {
+    AtxHeader{ level: HeadingLevel, text: Vec<MarkdownText<'source>>},
+    SetextHeader{ level: HeadingLevel, level_len: usize, text: Vec<MarkdownText<'source>>},
 }
 
 impl<'source> AsText for Header<'source> {
     fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
-        match self.level {
-            HeadingLevel::H1 => {
-                for t in self.text.iter() {
-                    t.write_as_text(output)?;
+        match self {
+            Header::AtxHeader{level, text} => {
+                match level {
+                    HeadingLevel::H1 => write!(output, "# ")?,
+                    HeadingLevel::H2 => write!(output, "## ")?,
+                    HeadingLevel::H3 => write!(output, "### ")?,
+                    HeadingLevel::H4 => write!(output, "#### ")?,
+                    HeadingLevel::H5 => write!(output, "##### ")?,
+                    HeadingLevel::H6 => write!(output, "###### ")?,
                 }
-                writeln!(output, "\n=====")?;
-                return Ok(());
-            },
-            HeadingLevel::H2 => {
-                for t in self.text.iter() {
-                    t.write_as_text(output)?;
-                }
-                writeln!(output, "\n-----")?;
-                return Ok(());
-            },
-            HeadingLevel::H3 => write!(output, "### ")?,
-            HeadingLevel::H4 => write!(output, "#### ")?,
-            HeadingLevel::H5 => write!(output, "##### ")?,
-            HeadingLevel::H6 => write!(output, "###### ")?,
-        };
-        for t in self.text.iter() {
-            t.write_as_text(output)?;
-        }
 
-        Ok(())
+                for t in text.iter() {
+                    t.write_as_text(output)?;
+                }
+
+                writeln!(output)?;
+
+                Ok(())
+            },
+            Header::SetextHeader{level, level_len, text} => {
+                for t in text.iter() {
+                    t.write_as_text(output)?;
+                }
+
+                let to_write = if *level == HeadingLevel::H1 {
+                    "="
+                } else {
+                    "-"
+                };
+                for _ in 0..*level_len {
+                    write!(output, "{}", to_write)?;
+                }
+
+                Ok(())
+            },
+        }
     }
 }
 
@@ -76,13 +96,14 @@ fn setext_style(input: &str) -> IResult<&str, Header> {
         return fail(input);
     };
 
+    let line_len = line.len();
     let line = format!("\n{line}");
 
     let x = (
         take_until1(line.as_str()).and_then(MarkdownText::parse_markdown_text_stream),
         setext_ending,
     )
-        .map(|(text, level)| Header { text, level })
+        .map(|(text, level)| Header::SetextHeader{ text, level_len: line_len, level })
         .parse_next(input);
 
     x
@@ -99,27 +120,27 @@ pub fn parse_header(input: &'_ str) -> IResult<&str, Header> {
     };
 
     let atx_style = dispatch! {delimited(space0, take_while1("#"), space0);
-        "######" => find_until_opt_terminator("######").map(|text| Header {
+        "######" => find_until_opt_terminator("######").map(|text| Header::AtxHeader {
             text,
             level: HeadingLevel::H6,
         }),
-        "#####" => find_until_opt_terminator("#####").map(|text| Header {
+        "#####" => find_until_opt_terminator("#####").map(|text| Header::AtxHeader {
             text,
             level: HeadingLevel::H5,
         }),
-        "####" => find_until_opt_terminator("####").map(|text| Header {
+        "####" => find_until_opt_terminator("####").map(|text| Header::AtxHeader {
             text,
             level: HeadingLevel::H4,
         }),
-        "###" => find_until_opt_terminator("###").map(|text| Header {
+        "###" => find_until_opt_terminator("###").map(|text| Header::AtxHeader {
             text,
             level: HeadingLevel::H3,
         }),
-        "##" => find_until_opt_terminator("##").map(|text| Header {
+        "##" => find_until_opt_terminator("##").map(|text| Header::AtxHeader {
             text,
             level: HeadingLevel::H2,
         }),
-        "#" => find_until_opt_terminator("#").map(|text| Header {
+        "#" => find_until_opt_terminator("#").map(|text| Header::AtxHeader {
             text,
             level: HeadingLevel::H1,
         }),
@@ -134,6 +155,8 @@ pub fn parse_header(input: &'_ str) -> IResult<&str, Header> {
 
 #[cfg(test)]
 mod tests {
+    use winnow::FinishIResult;
+
     use super::*;
 
     #[test]
@@ -142,9 +165,9 @@ mod tests {
         assert_eq!(remaining, "\n");
         assert_eq!(
             heading,
-            Header {
+            Header::AtxHeader{
                 level: HeadingLevel::H1,
-                text: vec![MarkdownText::Text("Hello, World"), MarkdownText::Text("!")],
+                text: vec![MarkdownText::Text("Hello, World"), MarkdownText::Text("!")]
             }
         );
     }
@@ -155,8 +178,9 @@ mod tests {
         assert_eq!(remaining, "\n");
         assert_eq!(
             header,
-            Header {
+            Header::SetextHeader{
                 level: HeadingLevel::H1,
+                level_len: 12,
                 text: vec![MarkdownText::Text("Hello, World"), MarkdownText::Text("!")]
             }
         );
@@ -168,10 +192,25 @@ mod tests {
         assert_eq!(remaining, "");
         assert_eq!(
             header,
-            Header {
+            Header::SetextHeader{
                 level: HeadingLevel::H2,
+                level_len: 12,
                 text: vec![MarkdownText::Text("Hello, World"), MarkdownText::Text("!")]
             }
         );
+    }
+
+    #[test]
+    fn test_atx_embedded() {
+        let header = parse_header("# this isn't a link: [foo]").finish().unwrap();
+        assert_eq!(
+            header,
+            Header::AtxHeader{
+                level: HeadingLevel::H1,
+                text: MarkdownText::parse_markdown_text_stream("this isn't a link: [foo]")
+                    .finish()
+                    .unwrap()
+            }
+        )
     }
 }

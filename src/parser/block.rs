@@ -37,7 +37,9 @@ impl<'source> AsText for Block<'source> {
 mod test {
     use winnow::FinishIResult;
 
-    use crate::parser::util::MarkdownText::{self, *};
+    use crate::parser::{
+        headers::HeadingLevel, util::MarkdownText::{Text, SoftBreak},
+    };
 
     use super::*;
 
@@ -71,9 +73,9 @@ mod test {
         let block = parse_block(input).finish().unwrap();
         assert_eq!(
             block,
-            Block::Heading(Header {
-                level: pulldown_cmark::HeadingLevel::H1,
-                text: vec![MarkdownText::Text("header")],
+            Block::Heading(Header::AtxHeader{
+                level: HeadingLevel::H1,
+                text: vec![Text("header")],
             })
         )
     }
@@ -85,12 +87,12 @@ mod test {
         assert_eq!(
             blocks,
             [
-                Block::Heading(Header {
-                    level: pulldown_cmark::HeadingLevel::H1,
-                    text: vec![MarkdownText::Text("header")]
+                Block::Heading(Header::AtxHeader{
+                    level: HeadingLevel::H1,
+                    text: vec![Text("header")]
                 }),
                 Block::Paragraph(Paragraph {
-                    text: vec![MarkdownText::Text("this is some text")]
+                    text: vec![Text("this is some text")]
                 })
             ]
         )
