@@ -27,14 +27,14 @@ impl<'source> AsText for Header<'source> {
                 for t in self.text.iter() {
                     t.write_as_text(output)?;
                 }
-                writeln!(output, "=====")?;
+                writeln!(output, "\n=====")?;
                 return Ok(());
             },
             HeadingLevel::H2 => {
                 for t in self.text.iter() {
                     t.write_as_text(output)?;
                 }
-                writeln!(output, "-----")?;
+                writeln!(output, "\n-----")?;
                 return Ok(());
             },
             HeadingLevel::H3 => write!(output, "### ")?,
@@ -70,16 +70,16 @@ fn setext_ending(input: &str) -> IResult<&str, HeadingLevel> {
 }
 
 fn setext_style(input: &str) -> IResult<&str, Header> {
-    let Some(line) = dbg!(input.lines()
-        .filter(|&line| dbg!(setext_level_from_ending.parse_next(dbg!(line)).is_ok()))
-        .next()) else {
+    let Some(line) = input.lines()
+        .filter(|&line| setext_level_from_ending.parse_next(line).is_ok())
+        .next() else {
         return fail(input);
     };
 
     let line = format!("\n{line}");
 
     let x = (
-        take_until1(dbg!(line.as_str())).and_then(MarkdownText::parse_markdown_text_stream),
+        take_until1(line.as_str()).and_then(MarkdownText::parse_markdown_text_stream),
         setext_ending,
     )
         .map(|(text, level)| Header { text, level })

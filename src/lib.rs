@@ -23,7 +23,7 @@ pub fn cleanup(data: &'_ str, tab_width: usize) -> Cow<'_, str> {
                 .expect("failed to build re")
         })
         .replace_all(data, "");
-    let mut data = LINE_ENDING_RE
+    let data = LINE_ENDING_RE
         .get_or_init(|| {
             RegexBuilder::new(r"\r\n?")
                 .build()
@@ -33,7 +33,7 @@ pub fn cleanup(data: &'_ str, tab_width: usize) -> Cow<'_, str> {
         .into_owned();
 
     // upstream does this, so we do it too
-    data.push_str("\n\n");
+    // data.push_str("\n\n");
     DETAB_RE
         .get_or_init(|| {
             RegexBuilder::new(r"^.*\t.*$")
@@ -65,7 +65,7 @@ pub fn cleanup(data: &'_ str, tab_width: usize) -> Cow<'_, str> {
         .into_owned();
 
     // same here, even though it's not super necessary
-    data.push('\n');
+    // data.push('\n');
     data.into()
 }
 
@@ -75,13 +75,13 @@ pub struct Markdown<'source> {
 }
 
 impl<'source> Markdown<'source> {
-    pub fn parse(input: &'source str) -> Result<Self, String> {
+    pub fn parse(input: &'source str) -> color_eyre::Result<Self> {
         many1(parser::block::parse_block)
             .context("markdown text")
             .map(|blocks| Markdown { blocks })
             .parse_next(input)
             .finish()
-            .map_err(|e| format!("parsing error: {:?}", e))
+            .map_err(|e| color_eyre::eyre::eyre!("parsing error: {:?}", e))
     }
 }
 
