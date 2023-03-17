@@ -1,17 +1,17 @@
 use winnow::{
     branch::alt,
-    bytes::{take_till1, take_until1, take_while1, any},
+    bytes::{any, take_till1, take_while1},
     character::{newline, space0},
-    combinator::{fail, opt, eof, backtrack_err},
+    combinator::{backtrack_err, eof, fail, opt},
     dispatch,
-    multi::{many1, many0},
+    multi::{many0, many1},
     sequence::{delimited, preceded, terminated},
     IResult, Parser,
 };
 
 use crate::{AsHtml, AsText};
 
-use super::util::MarkdownText;
+use super::{util::MarkdownText, paragraphs::take_until_match};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum HeadingLevel {
@@ -133,7 +133,7 @@ fn setext_ending(input: &str) -> IResult<&str, HeadingLevel> {
         .parse_next(input)
 }
 
-fn setext_style(input: &str) -> IResult<&str, Header> {
+pub fn setext_header(input: &str) -> IResult<&str, Header> {
     let Some(line) = input.lines()
         .find(|&line| setext_level_from_ending.parse_next(line).is_ok()) else {
         return fail(input);
@@ -145,10 +145,9 @@ fn setext_style(input: &str) -> IResult<&str, Header> {
     }
 
     let line_len = line.len();
-    let line = format!("\n{line}");
 
     let x = (
-        take_until1(line.as_str()).and_then(MarkdownText::parse_markdown_text_stream),
+        take_until_match(setext_ending).and_then(MarkdownText::parse_markdown_text_stream),
         setext_ending,
     )
         .map(|(text, level)| Header::SetextHeader {
@@ -163,15 +162,18 @@ fn setext_style(input: &str) -> IResult<&str, Header> {
 
 pub fn parse_header(input: &'_ str) -> IResult<&str, Header> {
     let find_until_opt_terminator = |ending: &'static str| {
-        alt((take_till1("\n"), terminated(many0(any).map(|_: ()| {}), eof).recognize()))
-            .and_then(terminated(
-                MarkdownText::parse_markdown_text_stream,
-                (space0, opt(ending), space0),
-            ))
-            .context("find until opt terminator".to_string())
+        alt((
+            take_till1("\n"),
+            terminated(many0(any).map(|_: ()| {}), eof).recognize(),
+        ))
+        .and_then(terminated(
+            MarkdownText::parse_markdown_text_stream,
+            (space0, opt(ending), space0),
+        ))
+        .context("find until opt terminator".to_string())
     };
 
-    let atx_style = dispatch! {delimited(space0, take_while1("#"), space0);
+    dispatch! {delimited(space0, take_while1("#"), space0);
         "######" => find_until_opt_terminator("######").map(|text| Header::AtxHeader {
             text,
             level: HeadingLevel::H6,
@@ -198,11 +200,8 @@ pub fn parse_header(input: &'_ str) -> IResult<&str, Header> {
         }),
         _ => fail
     }
-    .context("atx-style header");
-
-    let (output, heading) = alt((setext_style, atx_style)).parse_next(input)?;
-
-    Ok((output, heading))
+    .context("atx-style header")
+    .parse_next(input)
 }
 
 #[cfg(test)]
@@ -226,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_setext_header_h1() {
-        let (remaining, header) = parse_header("Hello, World!\n============\n").unwrap();
+        let (remaining, header) = setext_header("Hello, World!\n============\n").unwrap();
         assert_eq!(remaining, "\n");
         assert_eq!(
             header,
@@ -240,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_setext_header_h2() {
-        let (remaining, header) = parse_header("Hello, World!\n------------").unwrap();
+        let (remaining, header) = setext_header("Hello, World!\n------------").unwrap();
         assert_eq!(remaining, "");
         assert_eq!(
             header,

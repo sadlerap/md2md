@@ -1,10 +1,10 @@
-use winnow::{branch::alt, character::newline, multi::many1, IResult, Parser};
+use winnow::{branch::alt, character::newline, combinator::eof, multi::{many1, count}, IResult, Parser};
 
 use crate::{AsHtml, AsText};
 
 use super::{
-    headers::{parse_header, Header},
-    paragraphs::{parse_paragraph, Paragraph},
+    headers::{parse_header, setext_header, Header},
+    paragraphs::{parse_paragraph, take_until_match, Paragraph},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -48,6 +48,8 @@ impl<'source> AsText for Block<'source> {
 pub fn parse_block(input: &str) -> IResult<&str, Block> {
     alt((
         many1(newline).map(Block::Separator),
+        take_until_match(alt((count(newline, 2), eof.void())))
+            .and_then(setext_header.map(Block::Heading)),
         parse_header.map(Block::Heading),
         // try parsing a paragraph last, since we should try to recognize other block types first
         parse_paragraph.map(Block::Paragraph),
@@ -172,23 +174,23 @@ mod test {
         )
     }
 
-    // #[test]
-    // fn bad_header() {
-    //     let input = "test\n\nfoo\n---";
-    //     let blocks: Vec<_> = many1(parse_block).parse_next(input).finish().unwrap();
-    //     assert_eq!(
-    //         blocks,
-    //         [
-    //             Block::Paragraph(Paragraph {
-    //                 text: vec![Text("foo")]
-    //             }),
-    //             Block::Separator(2),
-    //             Block::Heading(Header::SetextHeader {
-    //                 level: HeadingLevel::H2,
-    //                 level_len: 3,
-    //                 text: vec![Text("foo")]
-    //             }),
-    //         ]
-    //     )
-    // }
+    #[test]
+    fn bad_header() {
+        let input = "test\n\nfoo\n---";
+        let blocks: Vec<_> = many1(parse_block).parse_next(input).finish().unwrap();
+        assert_eq!(
+            blocks,
+            [
+                Block::Paragraph(Paragraph {
+                    text: vec![Text("test")]
+                }),
+                Block::Separator(2),
+                Block::Heading(Header::SetextHeader {
+                    level: HeadingLevel::H2,
+                    level_len: 3,
+                    text: vec![Text("foo")]
+                }),
+            ]
+        )
+    }
 }

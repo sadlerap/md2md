@@ -37,7 +37,7 @@ impl<'source> AsText for Paragraph<'source> {
     }
 }
 
-fn find_next<'a, F, O>(mut parser: F) -> impl FnMut(&'a str) -> IResult<&'a str, O, winnow::error::Error<&'a str>>
+pub fn find_next<'a, F, O>(mut parser: F) -> impl FnMut(&'a str) -> IResult<&'a str, O, winnow::error::Error<&'a str>>
 where
     F: Parser<&'a str, O, winnow::error::Error<&'a str>>,
 {
@@ -46,6 +46,22 @@ where
             let (_, rest) = input.split_at(i);
             if let Ok((_remaining, result)) = parser.parse_next(rest) {
                 return Ok((rest, result));
+            }
+        }
+        Err(Backtrack(ParseError::from_error_kind(input, winnow::error::ErrorKind::Fail)))
+    })
+}
+
+/// Takes until the given parser matches the input stream.  If the parser never matches, the input
+/// is consumed.  The result of the given parser is not consumed.
+pub fn take_until_match<'a, F, O>(mut parser: F) -> impl FnMut(&'a str) -> IResult<&'a str, &'a str, winnow::error::Error<&'a str>>
+where F: Parser<&'a str, O, winnow::error::Error<&'a str>>
+{
+    trace("take_until_matches", move |input: &'a str| {
+        for i in 0..=input.len() {
+            let (first, rest) = input.split_at(i);
+            if parser.parse_next(rest).is_ok() {
+                return Ok((rest, first));
             }
         }
         Err(Backtrack(ParseError::from_error_kind(input, winnow::error::ErrorKind::Fail)))
