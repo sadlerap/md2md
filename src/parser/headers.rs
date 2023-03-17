@@ -9,7 +9,7 @@ use winnow::{
     IResult, Parser,
 };
 
-use crate::AsText;
+use crate::{AsHtml, AsText};
 
 use super::util::MarkdownText;
 
@@ -34,6 +34,45 @@ pub enum Header<'source> {
         level_len: usize,
         text: Vec<MarkdownText<'source>>,
     },
+}
+
+impl<'source> AsHtml for Header<'source> {
+    fn write_html<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self {
+            Header::AtxHeader { level, text } => {
+                let level_tag = match level {
+                    HeadingLevel::H1 => "h1",
+                    HeadingLevel::H2 => "h2",
+                    HeadingLevel::H3 => "h3",
+                    HeadingLevel::H4 => "h4",
+                    HeadingLevel::H5 => "h5",
+                    HeadingLevel::H6 => "h6",
+                };
+                write!(output, "<{level_tag}>")?;
+                for t in text.iter() {
+                    t.write_html(output)?;
+                }
+                write!(output, "</{level_tag}>")?;
+            }
+            Header::SetextHeader { level, text, .. } => {
+                let level_tag = match level {
+                    HeadingLevel::H1 => "h1",
+                    HeadingLevel::H2 => "h2",
+                    HeadingLevel::H3 => "h3",
+                    HeadingLevel::H4 => "h4",
+                    HeadingLevel::H5 => "h5",
+                    HeadingLevel::H6 => "h6",
+                };
+                write!(output, "<{level_tag}>")?;
+                for t in text.iter() {
+                    t.write_html(output)?;
+                }
+                write!(output, "</{level_tag}>")?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<'source> AsText for Header<'source> {

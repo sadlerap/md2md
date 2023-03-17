@@ -11,7 +11,10 @@ use winnow::{
     IResult, Parser,
 };
 
-use crate::{parser::util::{nested_brackets, nested_parenthesis}, AsText};
+use crate::{
+    parser::util::{nested_brackets, nested_parenthesis},
+    AsHtml, AsText,
+};
 
 use super::util::MarkdownText;
 
@@ -21,11 +24,33 @@ enum LinkRef<'a> {
     Inline(&'a str),
 }
 
+/// This is a link with a title: [link](https://example.com "title")
 #[derive(Debug, PartialEq, Eq)]
 pub struct Link<'source> {
     link_text: Vec<MarkdownText<'source>>,
     link_ref: LinkRef<'source>,
     title: Option<&'source str>,
+}
+
+impl<'source> AsHtml for Link<'source> {
+    fn write_html<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self.link_ref {
+            LinkRef::Ref(_) => unimplemented!("TODO: We need to do some post-processing before we can write reference-style links"),
+            LinkRef::Inline(target) => {
+                write!(output, "<a href=\"{target}\"")?;
+                if let Some(title) = self.title {
+                    write!(output, " title=\"{title}\"")?;
+                }
+                write!(output, ">")?;
+                for t in self.link_text.iter() {
+                    t.write_html(output)?;
+                }
+                write!(output, "</a>")?;
+            },
+        }
+
+        Ok(())
+    }
 }
 
 impl<'source> AsText for Link<'source> {
@@ -43,17 +68,23 @@ impl<'source> AsText for Link<'source> {
                     write!(output, " \"{title}\"")?;
                 }
                 write!(output, ")")?;
-            },
+            }
         }
         Ok(())
     }
 }
 
 /// A link where the target is the same as the text.  In markdown, this is constructed with
-/// `<https://example.com>`
+/// `<https://example.com>` (rendered as <https://example.com>).
 #[derive(Debug, PartialEq, Eq)]
 pub struct AutoLink<'a> {
     target: Cow<'a, str>,
+}
+
+impl<'a> AsHtml for AutoLink<'a> {
+    fn write_html<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        write!(output, "<a href=\"{}\">{}</a>", self.target, self.target)
+    }
 }
 
 impl<'a> AsText for AutoLink<'a> {

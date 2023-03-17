@@ -3,13 +3,23 @@ use winnow::{
     Parser,
 };
 
-use crate::AsText;
+use crate::{AsHtml, AsText};
 
 use super::util::MarkdownText;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Paragraph<'source> {
     pub(crate) text: Vec<MarkdownText<'source>>,
+}
+
+impl<'source> AsHtml for Paragraph<'source> {
+    fn write_html<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        for t in self.text.iter() {
+            t.write_html(output)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<'source> AsText for Paragraph<'source> {
@@ -30,7 +40,7 @@ impl<'source> AsText for Paragraph<'source> {
 pub fn parse_paragraph(input: &str) -> IResult<&str, Paragraph> {
     terminated(
         many1(MarkdownText::parse_markdown_text),
-        alt(((newline, newline).void(), (newline, eof).void(), eof.void())),
+        alt((newline.void(), eof.void())),
     )
     .context("paragraph")
     .map(|text: Vec<MarkdownText<'_>>| Paragraph { text })

@@ -5,9 +5,7 @@ use super::util::MarkdownText;
 pub fn parse_inline_code(input: &str) -> IResult<&str, MarkdownText> {
     delimited("`", take_until1("`"), "`")
         .context("parse_inline_code")
-        .map(|s: &str| {
-            MarkdownText::Code { code: s.into() }
-        })
+        .map(|s: &str| MarkdownText::Code { code: s.into() })
         .parse_next(input)
 }
 

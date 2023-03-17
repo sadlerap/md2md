@@ -7,7 +7,10 @@ use winnow::{
     IResult, Parser,
 };
 
-use crate::{parser::util::{nested_brackets, nested_parenthesis}, AsText};
+use crate::{
+    parser::util::{nested_brackets, nested_parenthesis},
+    AsHtml, AsText,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 enum ImageRef<'a> {
@@ -20,6 +23,25 @@ pub struct Image<'a> {
     alt_text: &'a str,
     image_ref: ImageRef<'a>,
     title: Option<&'a str>,
+}
+
+impl<'a> AsHtml for Image<'a> {
+    fn write_html<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self.image_ref {
+            ImageRef::Ref(_) => {
+                unimplemented!("html output for ref-style images is not yet implemented")
+            }
+            ImageRef::Inline(target) => {
+                write!(output, "<img src=\"{target}\" alt=\"{0}\"", self.alt_text)?;
+                if let Some(title) = self.title {
+                    write!(output, " title=\"{title}\"")?;
+                }
+                write!(output, "/>")?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> AsText for Image<'a> {
@@ -83,7 +105,7 @@ mod test {
     #[test]
     fn parse_inline() {
         let (remaining, image) =
-            dbg!(parse_image("![foo](https://github.com/favicon.ico)\n")).unwrap();
+            parse_image("![foo](https://github.com/favicon.ico)\n").unwrap();
         assert_eq!(remaining, "\n");
         assert_eq!(
             image,
@@ -97,7 +119,7 @@ mod test {
 
     #[test]
     fn parse_ref() {
-        let (remaining, image) = dbg!(parse_image("![foo][foo_image]\n")).unwrap();
+        let (remaining, image) = parse_image("![foo][foo_image]\n").unwrap();
         assert_eq!(remaining, "\n");
         assert_eq!(
             image,

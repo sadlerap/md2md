@@ -1,6 +1,6 @@
 use winnow::{branch::alt, character::newline, multi::many1, IResult, Parser};
 
-use crate::AsText;
+use crate::{AsHtml, AsText};
 
 use super::{
     headers::{parse_header, Header},
@@ -11,7 +11,23 @@ use super::{
 pub enum Block<'source> {
     Paragraph(Paragraph<'source>),
     Heading(Header<'source>),
-    Separator(usize)
+    Separator(usize),
+}
+
+impl<'source> AsHtml for Block<'source> {
+    fn write_html<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self {
+            Block::Paragraph(p) => {
+                write!(output, "<p>")?;
+                p.write_html(output)?;
+                write!(output, "</p>")?;
+            }
+            Block::Heading(h) => h.write_html(output)?,
+            Block::Separator(_) => writeln!(output)?,
+        }
+
+        Ok(())
+    }
 }
 
 pub fn parse_block(input: &str) -> IResult<&str, Block> {
@@ -30,7 +46,11 @@ impl<'source> AsText for Block<'source> {
         match self {
             Block::Paragraph(p) => p.write_as_text(output)?,
             Block::Heading(h) => h.write_as_text(output)?,
-            Block::Separator(amount) => for _ in 0..*amount { writeln!(output)? },
+            Block::Separator(amount) => {
+                for _ in 0..*amount {
+                    writeln!(output)?
+                }
+            }
         }
         Ok(())
     }
@@ -41,7 +61,8 @@ mod test {
     use winnow::FinishIResult;
 
     use crate::parser::{
-        headers::HeadingLevel, util::MarkdownText::{Text, SoftBreak},
+        headers::HeadingLevel,
+        util::MarkdownText::{SoftBreak, Text},
     };
 
     use super::*;
@@ -65,7 +86,7 @@ mod test {
         assert_eq!(
             block,
             Block::Paragraph(Paragraph {
-                text: vec![Text("just a paragraph"), SoftBreak]
+                text: vec![Text("just a paragraph")]
             })
         )
     }
@@ -76,7 +97,7 @@ mod test {
         let block = parse_block(input).finish().unwrap();
         assert_eq!(
             block,
-            Block::Heading(Header::AtxHeader{
+            Block::Heading(Header::AtxHeader {
                 level: HeadingLevel::H1,
                 text: vec![Text("header")],
             })
@@ -90,13 +111,43 @@ mod test {
         assert_eq!(
             blocks,
             [
-                Block::Heading(Header::AtxHeader{
+                Block::Heading(Header::AtxHeader {
                     level: HeadingLevel::H1,
                     text: vec![Text("header")]
                 }),
                 Block::Separator(1),
                 Block::Paragraph(Paragraph {
                     text: vec![Text("this is some text")]
+                })
+            ]
+        )
+    }
+
+    #[test]
+    fn block_neighboring_lines() {
+        let input = "foo\nbar";
+        let blocks: Vec<_> = many1(parse_block).parse_next(input).finish().unwrap();
+        assert_eq!(
+            blocks,
+            [Block::Paragraph(Paragraph {
+                text: vec![Text("foo"), SoftBreak, Text("bar")]
+            })]
+        )
+    }
+
+    #[test]
+    fn block_separate_paragraphs() {
+        let input = "foo\n\nbar";
+        let blocks: Vec<_> = many1(parse_block).parse_next(input).finish().unwrap();
+        assert_eq!(
+            blocks,
+            [
+                Block::Paragraph(Paragraph {
+                    text: vec![Text("foo")]
+                }),
+                Block::Separator(1),
+                Block::Paragraph(Paragraph {
+                    text: vec![Text("bar")]
                 })
             ]
         )

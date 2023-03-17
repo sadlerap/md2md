@@ -2,9 +2,9 @@ use std::borrow::Cow;
 
 use winnow::{
     branch::alt,
-    bytes::{any, none_of, take, take_till0, take_till1, take_while1},
-    character::{multispace1, newline},
-    combinator::{opt, peek},
+    bytes::{any, none_of, take, take_till0, take_till1},
+    character::newline,
+    combinator::{fail, opt, peek},
     dispatch,
     multi::{many0, many1},
     sequence::{delimited, terminated},
@@ -12,7 +12,7 @@ use winnow::{
     IResult, Parser,
 };
 
-use crate::AsText;
+use crate::{AsHtml, AsText};
 
 use super::{
     code::parse_inline_code,
@@ -28,7 +28,22 @@ pub enum MarkdownText<'source> {
     Link(Link<'source>),
     AutoLink(AutoLink<'source>),
     SoftBreak,
-    Code{code: Cow<'source, str>},
+    Code { code: Cow<'source, str> },
+}
+
+impl<'source> AsHtml for MarkdownText<'source> {
+    fn write_html<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
+        match self {
+            MarkdownText::Text(text) => write!(output, "{text}")?,
+            MarkdownText::Image(image) => image.write_html(output)?,
+            MarkdownText::Link(link) => link.write_html(output)?,
+            MarkdownText::AutoLink(auto_link) => auto_link.write_html(output)?,
+            MarkdownText::SoftBreak => writeln!(output)?,
+            MarkdownText::Code { code } => write!(output, "<code>{code}</code>")?,
+        }
+
+        Ok(())
+    }
 }
 
 impl<'source> AsText for MarkdownText<'source> {
@@ -74,8 +89,8 @@ impl<'source> MarkdownText<'source> {
     }
 
     pub fn parse_markdown_text(input: &'source str) -> IResult<&'source str, Self> {
-        let parser = dispatch! {peek(alt((take_while1("![<`\n"), take(1usize))));
-            "![" => alt((
+        let parser = dispatch! {peek(take(1usize));
+            "!" => alt((
                 parse_image.context("image").map(MarkdownText::Image),
                 MarkdownText::take1,
             )),
@@ -91,9 +106,12 @@ impl<'source> MarkdownText<'source> {
                 parse_auto_link.context("auto link").map(MarkdownText::AutoLink),
                 MarkdownText::take1,
             )),
-            "\n" => multispace1.map(|_| MarkdownText::SoftBreak).context("soft break"),
+            "\n" => dispatch! {peek(take(2usize));
+                "\n\n" => fail,
+                _ => newline.map(|_| MarkdownText::SoftBreak).context("soft break")
+            },
             _ => alt((
-                take_till1("\n[]<>!").map(MarkdownText::Text),
+                take_till1("\n[]<>!`").map(MarkdownText::Text),
                 terminated(
                     many1(any).map(|_: ()| {}).recognize(),
                     opt(newline)).map(MarkdownText::Text)

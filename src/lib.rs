@@ -10,6 +10,10 @@ pub trait AsText {
     fn write_as_text<Writer: io::Write>(&self, output: &mut Writer) -> io::Result<()>;
 }
 
+pub trait AsHtml {
+    fn write_html<Writer: io::Write>(&self, output: &mut Writer) -> io::Result<()>;
+}
+
 pub fn cleanup(data: &'_ str, tab_width: usize) -> Cow<'_, str> {
     static BOM_RE: OnceCell<Regex> = OnceCell::new();
     static LINE_ENDING_RE: OnceCell<Regex> = OnceCell::new();
@@ -89,6 +93,16 @@ impl<'source> AsText for Markdown<'source> {
     fn write_as_text<Writer: io::Write>(&self, output: &mut Writer) -> io::Result<()> {
         for b in self.blocks.iter() {
             b.write_as_text(output)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'source> AsHtml for Markdown<'source> {
+    fn write_html<Writer: io::Write>(&self, output: &mut Writer) -> io::Result<()> {
+        for b in self.blocks.iter() {
+            b.write_html(output)?;
         }
 
         Ok(())
