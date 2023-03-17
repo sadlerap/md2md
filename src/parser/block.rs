@@ -82,12 +82,11 @@ mod test {
     #[test]
     fn parse_paragraph_with_trailing_newline() {
         let input = "just a paragraph\n";
-        let (remaining, block) = parse_block(input).unwrap();
-        assert_eq!(remaining, "\n");
+        let block = parse_block(input).finish().unwrap();
         assert_eq!(
             block,
             Block::Paragraph(Paragraph {
-                text: vec![Text("just a paragraph")]
+                text: vec![Text("just a paragraph"), SoftBreak]
             })
         )
     }
@@ -165,8 +164,31 @@ mod test {
                     text: vec![Text("foo")]
                 }),
                 Block::Separator(1),
-                Block::Heading(Header::AtxHeader { level: HeadingLevel::H1, text: vec![Text("bar")] }),
+                Block::Heading(Header::AtxHeader {
+                    level: HeadingLevel::H1,
+                    text: vec![Text("bar")]
+                }),
             ]
         )
     }
+
+    // #[test]
+    // fn bad_header() {
+    //     let input = "test\n\nfoo\n---";
+    //     let blocks: Vec<_> = many1(parse_block).parse_next(input).finish().unwrap();
+    //     assert_eq!(
+    //         blocks,
+    //         [
+    //             Block::Paragraph(Paragraph {
+    //                 text: vec![Text("foo")]
+    //             }),
+    //             Block::Separator(2),
+    //             Block::Heading(Header::SetextHeader {
+    //                 level: HeadingLevel::H2,
+    //                 level_len: 3,
+    //                 text: vec![Text("foo")]
+    //             }),
+    //         ]
+    //     )
+    // }
 }

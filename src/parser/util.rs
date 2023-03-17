@@ -4,7 +4,7 @@ use winnow::{
     branch::alt,
     bytes::{any, none_of, take, take_till0, take_till1},
     character::newline,
-    combinator::{fail, opt, peek},
+    combinator::{opt, peek},
     dispatch,
     multi::{many0, many1},
     sequence::{delimited, terminated},
@@ -106,10 +106,11 @@ impl<'source> MarkdownText<'source> {
                 parse_auto_link.context("auto link").map(MarkdownText::AutoLink),
                 MarkdownText::take1,
             )),
-            "\n" => dispatch! {peek(take(2usize));
+            "\n" => newline.map(|_| MarkdownText::SoftBreak).context("soft break"),
+            /*dispatch! {peek(take(2usize));
                 "\n\n" => fail,
                 _ => newline.map(|_| MarkdownText::SoftBreak).context("soft break")
-            },
+            },*/
             _ => alt((
                 take_till1("\n[]<>!`").map(MarkdownText::Text),
                 terminated(

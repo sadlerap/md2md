@@ -2,7 +2,7 @@ use winnow::{
     branch::alt,
     bytes::{take_till1, take_until1, take_while1, any},
     character::{newline, space0},
-    combinator::{fail, opt, eof},
+    combinator::{fail, opt, eof, backtrack_err},
     dispatch,
     multi::{many1, many0},
     sequence::{delimited, preceded, terminated},
@@ -138,6 +138,11 @@ fn setext_style(input: &str) -> IResult<&str, Header> {
         .find(|&line| setext_level_from_ending.parse_next(line).is_ok()) else {
         return fail(input);
     };
+
+    // short circuit, we're not a header
+    if line.contains("\n\n") {
+        return backtrack_err(fail).parse_next(input);
+    }
 
     let line_len = line.len();
     let line = format!("\n{line}");
