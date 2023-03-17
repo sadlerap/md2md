@@ -1,4 +1,4 @@
-use winnow::{branch::alt, character::newline, multi::many1, sequence::preceded, IResult, Parser};
+use winnow::{branch::alt, character::newline, multi::many1, IResult, Parser};
 
 use crate::AsText;
 
@@ -11,14 +11,15 @@ use super::{
 pub enum Block<'source> {
     Paragraph(Paragraph<'source>),
     Heading(Header<'source>),
+    Separator(usize)
 }
 
 pub fn parse_block(input: &str) -> IResult<&str, Block> {
     alt((
-        preceded(many1(newline).map(|_: ()| {}), parse_block),
-        parse_header.map(|h| Block::Heading(h)),
+        many1(newline).map(Block::Separator),
+        parse_header.map(Block::Heading),
         // try parsing a paragraph last, since we should try to recognize other block types first
-        parse_paragraph.map(|p| Block::Paragraph(p)),
+        parse_paragraph.map(Block::Paragraph),
     ))
     .context("block")
     .parse_next(input)
@@ -27,9 +28,11 @@ pub fn parse_block(input: &str) -> IResult<&str, Block> {
 impl<'source> AsText for Block<'source> {
     fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
         match self {
-            Block::Paragraph(p) => p.write_as_text(output),
-            Block::Heading(h) => h.write_as_text(output),
+            Block::Paragraph(p) => p.write_as_text(output)?,
+            Block::Heading(h) => h.write_as_text(output)?,
+            Block::Separator(amount) => for _ in 0..*amount { writeln!(output)? },
         }
+        Ok(())
     }
 }
 
@@ -91,6 +94,7 @@ mod test {
                     level: HeadingLevel::H1,
                     text: vec![Text("header")]
                 }),
+                Block::Separator(1),
                 Block::Paragraph(Paragraph {
                     text: vec![Text("this is some text")]
                 })

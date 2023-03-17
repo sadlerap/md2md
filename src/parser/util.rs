@@ -38,7 +38,7 @@ impl<'source> AsText for MarkdownText<'source> {
             MarkdownText::Image(image) => image.write_as_text(output)?,
             MarkdownText::Link(link) => link.write_as_text(output)?,
             MarkdownText::AutoLink(link) => link.write_as_text(output)?,
-            MarkdownText::SoftBreak => write!(output, "\n")?,
+            MarkdownText::SoftBreak => writeln!(output)?,
             MarkdownText::Code { code } => write!(output, "`{code}`")?,
         }
         Ok(())
@@ -54,13 +54,13 @@ impl<'source> MarkdownText<'source> {
         F: ContainsToken<<&'source str as Stream>::Token>,
     {
         alt((
-            parse_image.map(|image| MarkdownText::Image(image)),
-            parse_link.map(|link| MarkdownText::Link(link)),
-            parse_auto_link.map(|auto_link| MarkdownText::AutoLink(auto_link)),
+            parse_image.map(MarkdownText::Image),
+            parse_link.map(MarkdownText::Link),
+            parse_auto_link.map(MarkdownText::AutoLink),
             take_till0(matcher)
                 .recognize()
                 .context("text data")
-                .map(|s: &str| MarkdownText::Text(s)),
+                .map(MarkdownText::Text),
         ))
         .context("markdown leaf node")
         .parse_next(input)
@@ -68,7 +68,7 @@ impl<'source> MarkdownText<'source> {
 
     fn take1(input: &'source str) -> IResult<&'source str, Self> {
         take(1usize)
-            .map(|s| MarkdownText::Text(s))
+            .map(MarkdownText::Text)
             .context("take 1 character")
             .parse_next(input)
     }
@@ -76,11 +76,11 @@ impl<'source> MarkdownText<'source> {
     pub fn parse_markdown_text(input: &'source str) -> IResult<&'source str, Self> {
         let parser = dispatch! {peek(alt((take_while1("![<`\n"), take(1usize))));
             "![" => alt((
-                parse_image.context("image").map(|i| MarkdownText::Image(i)),
+                parse_image.context("image").map(MarkdownText::Image),
                 MarkdownText::take1,
             )),
             "[" => alt((
-                parse_link.context("link").map(|l| MarkdownText::Link(l)),
+                parse_link.context("link").map(MarkdownText::Link),
                 MarkdownText::take1,
             )),
             "`" => alt((
@@ -88,15 +88,15 @@ impl<'source> MarkdownText<'source> {
                 MarkdownText::take1,
             )),
             "<" => alt((
-                parse_auto_link.context("auto link").map(|a| MarkdownText::AutoLink(a)),
+                parse_auto_link.context("auto link").map(MarkdownText::AutoLink),
                 MarkdownText::take1,
             )),
             "\n" => multispace1.map(|_| MarkdownText::SoftBreak).context("soft break"),
             _ => alt((
-                take_till1("\n[]<>!").map(|t| MarkdownText::Text(t)),
+                take_till1("\n[]<>!").map(MarkdownText::Text),
                 terminated(
                     many1(any).map(|_: ()| {}).recognize(),
-                    opt(newline)).map(|t| MarkdownText::Text(t))
+                    opt(newline)).map(MarkdownText::Text)
             )).context("text"),
         };
 
