@@ -1,4 +1,4 @@
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, Context, eyre};
 use clap::Parser;
 use md2md::{Markdown, AsText};
 
@@ -23,17 +23,22 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let input = std::fs::read_to_string(args.input)?;
+    let input = std::fs::read_to_string(&args.input)
+        .with_context(|| eyre!("Error reading `{:?}`", &args.input))?;
+
     let mut output = std::fs::OpenOptions::new()
         .write(true)
         .truncate(true)
         .create(true)
-        .open(args.output)?;
+        .open(&args.output)
+        .with_context(|| eyre!("Failed to open `{:?}` for writing", &args.output))?;
 
     let cleaned_input = md2md::cleanup(&input, args.tab_width);
-    let md = Markdown::parse(&cleaned_input)?;
+    let md = Markdown::parse(&cleaned_input)
+        .with_context(|| eyre!("Error parsing markdown"))?;
 
-    md.write_as_text(&mut output)?;
+    md.write_as_text(&mut output)
+        .with_context(|| eyre!("Failed to write to `{:?}`", &args.output))?;
 
     Ok(())
 }
