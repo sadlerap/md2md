@@ -1,10 +1,10 @@
 use winnow::{
     branch::alt,
-    bytes::{take_till1, take_until1, take_while1},
+    bytes::{take_till1, take_until1, take_while1, any},
     character::{newline, space0},
-    combinator::{fail, opt},
+    combinator::{fail, opt, eof},
     dispatch,
-    multi::many1,
+    multi::{many1, many0},
     sequence::{delimited, preceded, terminated},
     IResult, Parser,
 };
@@ -158,7 +158,7 @@ fn setext_style(input: &str) -> IResult<&str, Header> {
 
 pub fn parse_header(input: &'_ str) -> IResult<&str, Header> {
     let find_until_opt_terminator = |ending: &'static str| {
-        take_till1("\n")
+        alt((take_till1("\n"), terminated(many0(any).map(|_: ()| {}), eof).recognize()))
             .and_then(terminated(
                 MarkdownText::parse_markdown_text_stream,
                 (space0, opt(ending), space0),

@@ -30,17 +30,6 @@ impl<'source> AsHtml for Block<'source> {
     }
 }
 
-pub fn parse_block(input: &str) -> IResult<&str, Block> {
-    alt((
-        many1(newline).map(Block::Separator),
-        parse_header.map(Block::Heading),
-        // try parsing a paragraph last, since we should try to recognize other block types first
-        parse_paragraph.map(Block::Paragraph),
-    ))
-    .context("block")
-    .parse_next(input)
-}
-
 impl<'source> AsText for Block<'source> {
     fn write_as_text<Writer: std::io::Write>(&self, output: &mut Writer) -> std::io::Result<()> {
         match self {
@@ -54,6 +43,17 @@ impl<'source> AsText for Block<'source> {
         }
         Ok(())
     }
+}
+
+pub fn parse_block(input: &str) -> IResult<&str, Block> {
+    alt((
+        many1(newline).map(Block::Separator),
+        parse_header.map(Block::Heading),
+        // try parsing a paragraph last, since we should try to recognize other block types first
+        parse_paragraph.map(Block::Paragraph),
+    ))
+    .context("block")
+    .parse_next(input)
 }
 
 #[cfg(test)]
@@ -82,7 +82,8 @@ mod test {
     #[test]
     fn parse_paragraph_with_trailing_newline() {
         let input = "just a paragraph\n";
-        let block = parse_block(input).finish().unwrap();
+        let (remaining, block) = parse_block(input).unwrap();
+        assert_eq!(remaining, "\n");
         assert_eq!(
             block,
             Block::Paragraph(Paragraph {
@@ -145,10 +146,26 @@ mod test {
                 Block::Paragraph(Paragraph {
                     text: vec![Text("foo")]
                 }),
-                Block::Separator(1),
+                Block::Separator(2),
                 Block::Paragraph(Paragraph {
                     text: vec![Text("bar")]
                 })
+            ]
+        )
+    }
+
+    #[test]
+    fn trailing_header() {
+        let input = "foo\n# bar";
+        let blocks: Vec<_> = many1(parse_block).parse_next(input).finish().unwrap();
+        assert_eq!(
+            blocks,
+            [
+                Block::Paragraph(Paragraph {
+                    text: vec![Text("foo")]
+                }),
+                Block::Separator(1),
+                Block::Heading(Header::AtxHeader { level: HeadingLevel::H1, text: vec![Text("bar")] }),
             ]
         )
     }

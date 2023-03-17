@@ -1,6 +1,11 @@
 use winnow::{
-    branch::alt, character::newline, combinator::eof, multi::many1, sequence::terminated, IResult,
-    Parser,
+    branch::alt,
+    bytes::{one_of, take_until1},
+    character::newline,
+    error::{ErrMode::Backtrack, Error, ParseError},
+    multi::count,
+    trace::trace,
+    IResult, Parser,
 };
 
 use crate::{AsHtml, AsText};
@@ -32,17 +37,47 @@ impl<'source> AsText for Paragraph<'source> {
     }
 }
 
+fn find_next<'a, F, O>(mut parser: F) -> impl FnMut(&'a str) -> IResult<&'a str, O, winnow::error::Error<&'a str>>
+where
+    F: Parser<&'a str, O, winnow::error::Error<&'a str>>,
+{
+    trace("find_next", move |input: &'a str| {
+        for i in 0..input.len() {
+            let (_, rest) = input.split_at(i);
+            if let Ok((_remaining, result)) = parser.parse_next(rest) {
+                return Ok((rest, result));
+            }
+        }
+        Err(Backtrack(ParseError::from_error_kind(input, winnow::error::ErrorKind::Fail)))
+    })
+}
+
 /// Parse a paragraph.
 ///
 /// In markdown, a paragraph is one or more lines of markdown text.  Unlike other block types,
 /// there isn't any special characters to delineate this block type from others, so blocks should
 /// default to this.
 pub fn parse_paragraph(input: &str) -> IResult<&str, Paragraph> {
-    terminated(
-        many1(MarkdownText::parse_markdown_text),
-        alt((newline.void(), eof.void())),
-    )
-    .context("paragraph")
-    .map(|text: Vec<MarkdownText<'_>>| Paragraph { text })
+    let block_termination_chars = "=-#";
+    let mut stream_parser = MarkdownText::parse_markdown_text_stream
+        .map(|text| Paragraph { text })
+        .context("paragraph");
+
+    match find_next(alt((
+        count(newline, 2).map(|_: ()| {}).context("2 newlines"),
+        (
+            newline::<&str, Error<&str>>,
+            one_of(block_termination_chars),
+        )
+            .recognize()
+            .context("searching for header characters")
+            .void(),
+    )).recognize())
     .parse_next(input)
+    {
+        Ok((_, text)) => take_until1(text)
+            .and_then(stream_parser)
+            .parse_next(input),
+        Err(_) => stream_parser.parse_next(input),
+    }
 }
